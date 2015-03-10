@@ -1,6 +1,7 @@
 # Saving Nemo
 Play the game here: http://nemo.nergal.se
-Game is also part of Chrome Experiements: https://www.chromeexperiments.com/experiment/saving-nemo
+
+The game is also part of Chrome Experiements: https://www.chromeexperiments.com/experiment/saving-nemo
 
 ## Description
 Saving Nemo is a ThreeJS WebGL game with a NodeJS backend server to save statistics in an SQLite database.
