@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+<meta name="description" content="">
+<meta name="author" content="">
+<link rel="stylesheet" type="text/css" href="css/style.css">
+<title>Saving Nemo</title>
+
+<script src="/socket.io/socket.io.js"></script>
+
+<script src="libs/three.min.js"></script>
+<script src="libs/Stats.js"></script>
+<script src="libs/ShaderParticles.js"></script>
+<script src="libs/jquery-1.9.1.js"></script>
+<script src="libs/SubdivisionModifier.js"></script>
+<script src="libs/THREEx.KeyboardState.js"></script>
+<script src="libs/THREEx.FullScreen.js"></script>
+<script src="libs/THREEx.WindowResize.js"></script>
+<script src="libs/ExplodeModifier.js"></script>
+<script src="libs/TessellateModifier.js"></script>
+<script type="x-shader/x-vertex" id="vertexshaderExplode">
+uniform float time;
+      attribute vec3 customColor;
+      attribute vec3 displacement;
+      varying vec3 vNormal;
+      varying vec3 vColor;
+      float quadraticEaseInOut ( float k ) {
+      if ( ( k *= 2.0 ) < 1.0 ) return 0.5 * k * k;
+          return - 0.5 * ( --k * ( k - 2.0 ) - 1.0 );
+      }	  
+      void main() {
+         vNormal = normal;
+     vColor = customColor;  
+     float t = abs(time * 2.0 - 1.0);
+     vec3 newPosition = position + time * displacement;
+     gl_Position = projectionMatrix * modelViewMatrix * vec4( newPosition, 1.0 );
+       }			  
+</script>
+
+<script type="x-shader/x-fragment" id="fragmentshaderExplode">
+
+varying vec3 vNormal;
+      varying vec3 vColor;
+
+      void main() {
+
+      const float ambient = 2.005;
+
+      vec3 light = vec3( 1.0 );
+      light = normalize( light );
+
+      float directional = max( dot( vNormal, light ), 0.0 );
+
+      gl_FragColor = vec4( ( directional + ambient ) * vColor, 1.0 );
+      gl_FragColor.xyz = sqrt( gl_FragColor.xyz );
+
+      }
+
+</script>
+
+<script id="waterShader" type="x-shader/x-vertex"> 
+uniform sampler2D baseTexture;
+      uniform float baseSpeed;
+      uniform sampler2D noiseTexture;
+      uniform float noiseScale;
+      uniform float alpha;
+      uniform float time;
+
+      varying vec2 vUv;
+      void main() 
+      {
+      vec2 uvTimeShift = vUv + vec2( -0.7, 1.5 ) * time * baseSpeed;
+      vec4 noiseGeneratorTimeShift = texture2D( noiseTexture, uvTimeShift );
+      vec2 uvNoiseTimeShift = vUv + noiseScale * vec2( noiseGeneratorTimeShift.r, noiseGeneratorTimeShift.b );
+      vec4 baseColor = texture2D( baseTexture, uvNoiseTimeShift );
+
+      baseColor.a = alpha;
+      gl_FragColor = baseColor;
+      }  
+</script>
+<style>
+@font-face
+{
+    font-family: fish;
+    src: url(fonts/fish.ttf);
+}
+.fish_font {
+    font-family: fish;
+}
+body {
+    cusor: none;
+    background-color: #000000;
+    color: #ffffff;
+    font-family:Monospace;
+    font-size:13px;
+    text-align:center;
+    font-weight: bold;
+
+    background-color: #000000;
+    margin: 0 auto;
+    overflow: hidden; 
+}
+
+</style>
+</head>
+<body>
+
+<div id="timer" class="fish_font" style="display: none; "> 
+    Saved: <span id="score" class="fish_font"><font color="#FF11FF"></font></span>
+</div>
+<canvas style="display: none; z-index: 1000; margin-right: 0px; padding-left: 0px;  opacity: 0.5; position: absolute;" id="radar" width="300" height="300"></canvas>
+
+<canvas style="display: none; margin-right: 0px; padding-left: 600px;  opacity: 0.5; position: absolute;" id="noise_1" width="300" height="300"></canvas> 
+<div style="position: absolute; margin-bottom: 0px;" id="stats"></div>
+
+<div id="timer" class="fish_font msgboard" style="display: none;"> 
+    <p id="timer_msg" class="fish_font"></p>
+</div>
+
+<div id="round" class="nocursor fish_font msgboard" style="display: none;"> 
+    <h1 id="round_msg" class="fish_font"></h1>
+    <h1 id="round_msg2" class="fish_font"></h1>
+</div>
+
+<div id="msgboard" class="msgboard" style="display: none;"> 
+    <h1 id="msgboard_msg" class="fish_font"></h1>
+</div>
+
+<div id="info" class="info white" style="">
+    <legend id="logo" class="fish_font">
+        <span style=""><font size="12px" color="#FF33FF">Saving Nemo</font><hr></span>
+    </legend>
+    <div id="menu1">
+
+    </div>
+    <p id="play" class="fish_font" style="font-size: 40px; margin-left: 0%; position: relative;"><a href="javascript:Play();">PLAY</a></p>
+    <div id="fb-root"></div>
+    <div id="info_loadbar" class="meter blue">
+        <p>Loading - <font id="info_load_percent"></font></p>
+        <span id="info_load" style="width: 0%;"></span>
+    </div>
+    <div id="main_window" style="" class="sub_window">
+        <span><font color="#FDD017" size="5px" class="fish_font">Top 10 fish Saviours</font><hr></span>
+        <div class="CSSTableGenerator" >
+            <table cellspacing='0' id="ranking" class="fish_font" >
+                <tr></tr>
+            </table>
+        </div>
+    </div>
+    <div id="stat">
+    </div>
+    <div style="height: 30px; width: 100%; padding-top: 20px;">
+        <!--     <div class="fb-like" data-href="http://nemo.nergal.se" data-layout="button_count" data-action="like" data-show-faces="true" data-share="true"></div>-->
+        <div class="fb-like" data-href="http://nemo.nergal.se" data-layout="button_count" data-action="like" data-show-faces="false" data-share="false"></div>
+        <a href="https://twitter.com/share" class="twitter-share-button" data-url="http://nemo.nergal.se" data-text="Save Nemo and his Friends escaping the evil bubbles!" data-hashtags="savingnemo">Tweet</a>
+        <script>!function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0],p=/^http:/.test(d.location)?'http':'https';if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src=p+'://platform.twitter.com/widgets.js';fjs.parentNode.insertBefore(js,fjs);}}(document, 'script', 'twitter-wjs');</script>
+    </div>
+    <a href="javascript:About();">About</a>
+    <a href="javascript:Credits();">Credits</a>
+</div>
+
+<div id="container"></div>
+
+<div id="about" style="display: none;">
+    <h3 class="fish_font" style="color: #FFCCFF">About</h3>
+    <span class="fish_font"><font color="#FFCCFF">Author:</font> nergal</span><br>
+    <span class="fish_font"><font color="#FFCCFF">IRC:</font> proc_ @ freenode.net three.js channel</span><br>
+    <span class="fish_font"><font color="#FFCCFF">E-mail:</font> nergal@nergal.se</span><br><br>
+</div>
+
+
+<div id="credits" style="display: none;">
+    <h3 class="fish_font" style="color: #FFCCFF">Credits</h3>
+    <span class="fish_font"><a target="_blank" href="http://threejs.org">three.js</a> - mr.doob's great webgl library</span><br>
+    <span class="fish_font"><a target="_blank" href="http://soundbible.com">soundbible</a> - All sound effects</span><br>
+    <span class="fish_font"><a target="_blank" href="http://ro.me">ROME-3 Dreams of Black</a>- Fish models</span><br><br>
+</div>
+
+<div class="fish_font" id="getname" style="display: none;">
+    <br>
+    <span style="color: #66CCFF; font-size: 22px; ">Please enter name for the high-score list</span><br>
+    <input maxlength="15" class="" type="text" id="name"></input><br>
+    <a style="color: #33FF33; font-size: 17px;" href="javascript:GetName();">OK</a>
+</div>
+
+
+</body>
+<script src="js/utils.js"></script>
+<script src="js/net.js"></script>
+<script src="js/env.js"></script>
+<script src="js/loader.js"></script>
+<script src="js/player.js"></script>
+<script src="js/main.js"></script>
+<script>
+var game = new Game();
+$('#menu1').html($('#menu_').html());
+$('#container').css( 'cursor', 'url("css/crosshair2.png"), auto');
+$('#hud').css( 'cursor', 'url("css/crosshair2.png"), auto');
+$('#msgboard').css( 'cursor', 'url("css/crosshair2.png"), auto');
+$('#timer').css( 'cursor', 'url("css/crosshair2.png"), auto');
+game.Init();
+function About() {
+    $('#menu1').html($('#about').html());
+}
+function Credits() {
+    $('#menu1').html($('#credits').html());
+}
+
+function GetName() {
+    if($('#name').val() == "") {
+        $('#getname').show();
+    } else {
+        game.player_name = $('#name').val();
+        $('#getname').hide();
+        game.SetName();
+        game.net.send_GetScore();
+    }
+}    
+
+
+function Play() {
+    game.StartGame();
+}
+</script>
+<script>
+(function(d, s, id) {
+    var js, fjs = d.getElementsByTagName(s)[0];
+    if (d.getElementById(id)) return;
+    js = d.createElement(s); js.id = id;
+    js.src = "//connect.facebook.net/sv_SE/sdk.js#xfbml=1&appId=166751083448852&version=v2.0";
+    fjs.parentNode.insertBefore(js, fjs);
+}(document, 'script', 'facebook-jssdk'));
+</script>
+</html>
